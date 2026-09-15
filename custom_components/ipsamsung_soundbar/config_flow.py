@@ -14,7 +14,7 @@ from .const import CONF_NAME, DEFAULT_NAME, DEFAULT_PORT, DOMAIN
 
 
 def _test_url(host: str, port: int) -> str:
-    cmd = quote("<name>GetFeature</name>", safe="")
+    cmd = quote("<name>GetFeature</name>", safe="/")
     return f"http://{host}:{port}/UIC?cmd={cmd}"
 
 

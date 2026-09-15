@@ -72,7 +72,7 @@ def send_soundbar_command(ip: str, port: int, xml_command: str, timeout: float =
             "url": None,
         }
 
-    encoded_cmd = urllib.parse.quote(xml_command, safe="")
+    encoded_cmd = urllib.parse.quote(xml_command, safe="/")
     url = f"http://{ip}:{port}/UIC?cmd={encoded_cmd}"
     req = urllib.request.Request(url=url, method="GET")
 

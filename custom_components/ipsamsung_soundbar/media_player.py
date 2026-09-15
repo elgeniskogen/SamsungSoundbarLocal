@@ -56,7 +56,7 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
         self._attr_source = None
 
     def _url(self, xml_payload: str) -> str:
-        return f"http://{self._host}:{self._port}/UIC?cmd={quote(xml_payload, safe='')}"
+        return f"http://{self._host}:{self._port}/UIC?cmd={quote(xml_payload, safe='/')}"
 
     async def _request(self, xml_payload: str) -> ET.Element | None:
         session = async_get_clientsession(self.hass)
