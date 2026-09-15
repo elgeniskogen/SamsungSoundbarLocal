@@ -2,6 +2,10 @@
 
 Local-only Home Assistant integration for Samsung soundbars using the WAM/UIC HTTP API.
 
+## Credits
+
+This is a fork of [snowriderau/SamsungSoundbar](https://github.com/snowriderau/SamsungSoundbar), maintained here at [elgeniskogen/SamsungSoundbarLocal](https://github.com/elgeniskogen/SamsungSoundbarLocal). All credit for the original WAM/UIC protocol discovery and integration groundwork goes to the original author.
+
 ## Status
 
 This repository is now structured as a proper HACS custom integration:
