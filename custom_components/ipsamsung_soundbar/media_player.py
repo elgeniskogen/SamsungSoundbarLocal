@@ -131,17 +131,19 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
 
     async def async_turn_on(self) -> None:
         # Raw PowerOn is confirmed non-functional on the HW-Q960A; SetPowerStatus
-        # is the reliable command. Its immediate response can't be trusted (the
-        # device may echo an unrelated "ok" status), so confirm via GetPowerStatus.
-        await self._send('<name>SetPowerStatus</name><p type="dec" name="power" val="1"/>')
-        await self._refresh_power_status()
+        # is the reliable command, and unlike raw PowerOn/PowerOff its ack has
+        # matched the actual outcome in every test. Set state optimistically
+        # (like async_select_source) so HA reflects it immediately instead of
+        # waiting on an extra confirmatory round trip; the regular poll still
+        # corrects it if a command is ever silently ignored.
+        if await self._send('<name>SetPowerStatus</name><p type="dec" name="power" val="1"/>'):
+            self._attr_state = MediaPlayerState.ON
 
     async def async_turn_off(self) -> None:
-        # Raw PowerOff is confirmed non-functional (and can falsely report
-        # result="ok"); SetPowerStatus is the reliable command, verified via
-        # a follow-up GetPowerStatus rather than trusting the immediate reply.
-        await self._send('<name>SetPowerStatus</name><p type="dec" name="power" val="0"/>')
-        await self._refresh_power_status()
+        # See async_turn_on - SetPowerStatus's ack is trustworthy, so set state
+        # optimistically instead of paying for a confirmatory GetPowerStatus call.
+        if await self._send('<name>SetPowerStatus</name><p type="dec" name="power" val="0"/>'):
+            self._attr_state = MediaPlayerState.OFF
 
     async def async_set_volume_level(self, volume: float) -> None:
         value = int(max(0, min(100, round(volume * 100))))
