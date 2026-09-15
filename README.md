@@ -25,18 +25,20 @@ This repository is now structured as a proper HACS custom integration:
 
 ## What This Integration Supports
 
-- Power: `turn_on`, `turn_off` (soundbar firmware dependent)
+- Power: `turn_on`, `turn_off` via `SetPowerStatus` (verified reliable on HW-Q960A; raw `PowerOn`/`PowerOff` are not used - confirmed non-functional on that model)
 - Volume:
   - Set absolute volume (`0-100`)
   - Volume up/down (implemented as absolute +/-1)
 - Mute: on/off
 - Source select:
-  - `hdmi1`, `hdmi2`, `optical`, `arc`, `bt`
+  - `hdmi1`, `hdmi2`, `optical`, `bt`
+  - `optical` covers both the TOSLINK "Digital Audio In" port and TV audio received via HDMI-ARC - these are the same underlying mode on the HW-Q960A, not separate sources
+  - Wi-Fi/AirPlay/Spotify Connect cannot be selected locally (no working `SetFunc` value) and is only inferred for display when `GetFunc` repeatedly fails to respond while the unit is powered on
 - Polling state:
   - power status
   - volume
   - mute
-  - source
+  - source (see Wi-Fi caveat above)
 
 ## Command Behavior Notes (N950 Testing)
 
@@ -53,6 +55,26 @@ Less reliable (firmware dependent):
 - `<name>PowerOff</name>`
 
 The integration attempts power fallback logic when possible.
+
+## Command Behavior Notes (HW-Q960A Testing)
+
+Directly verified against a Samsung HW-Q960A (protocolver 2.3, platform tizen30):
+
+Reliable:
+- `<name>GetPowerStatus</name>` - responds correctly even while the unit is off (no need to assume state when unreachable)
+- `<name>SetPowerStatus</name><p type="dec" name="power" val="1"/>` - turns on
+- `<name>SetPowerStatus</name><p type="dec" name="power" val="0"/>` - turns off
+- `<name>SetFunc</name><p type="str" name="function" val="hdmi1|hdmi2|optical|bt"/>` - all confirmed via follow-up `GetFunc`
+
+Confirmed NOT working on this model:
+- `<name>PowerOn</name>` / `<name>PowerOff</name>` - no effect; the device can still reply with `result="ok"` on an unrelated stray status message, so this attribute alone cannot be trusted as confirmation of the requested action
+- `<name>SetFunc</name><p type="str" name="function" val="arc"/>` - no effect. `GetFeature` reports `<arc>0</arc>` and has no `arc` entry in `inputmode`; TV audio via HDMI-ARC uses the same `optical` mode as the physical TOSLINK "Digital Audio In" port, not a separate identifier
+- `<name>SetFunc</name><p type="str" name="function" val="wifi"/>` and `val="wifiidle"` - do not switch the source
+
+Known limitation - Wi-Fi/network audio (AirPlay, Spotify Connect):
+- The soundbar can switch itself into this mode on its own (e.g. starting AirPlay while on HDMI1), with no command from Home Assistant
+- While active, `GetFunc`, `GetPlayStatus`, `GetMusicInfo`, `GetCurrentPlayTime` and `GetCurrentPlaylist` stop returning their real data and instead echo an unrelated queued status message (still `result="ok"`)
+- There is no confirmed way to read or select this source directly; the integration infers it only after repeated consecutive `GetFunc` failures while the unit is confirmed powered on
 
 ## Detailed Command Reference
 
@@ -143,7 +165,7 @@ All commands below use Samsung WAM/UIC HTTP control.
 - **Test URL:** `http://<IP_ADDRESS>:56001/UIC?cmd=%3Cname%3ESet7bandEQValue%3C%2Fname%3E%3Cp%20type%3D%22dec%22%20name%3D%22presetindex%22%20val%3D%224%22%2F%3E%3Cp%20type%3D%22dec%22%20name%3D%22eqvalue1%22%20val%3D%220%22%2F%3E%3Cp%20type%3D%22dec%22%20name%3D%22eqvalue2%22%20val%3D%220%22%2F%3E%3Cp%20type%3D%22dec%22%20name%3D%22eqvalue3%22%20val%3D%220%22%2F%3E%3Cp%20type%3D%22dec%22%20name%3D%22eqvalue4%22%20val%3D%220%22%2F%3E%3Cp%20type%3D%22dec%22%20name%3D%22eqvalue5%22%20val%3D%220%22%2F%3E%3Cp%20type%3D%22dec%22%20name%3D%22eqvalue6%22%20val%3D%220%22%2F%3E%3Cp%20type%3D%22dec%22%20name%3D%22eqvalue7%22%20val%3D%220%22%2F%3E`
 
 #### Set Input ARC
-- **Status:** `working`
+- **Status:** `working` on N950; **confirmed NOT working on HW-Q960A** (see Q960A notes above - `GetFeature` reports `<arc>0</arc>`, no effect when sent)
 - **Purpose:** Switches to ARC
 - **XML:** `<name>SetFunc</name><p type="str" name="function" val="arc"/>`
 - **Test URL:** `http://<IP_ADDRESS>:56001/UIC?cmd=%3Cname%3ESetFunc%3C%2Fname%3E%3Cp%20type%3D%22str%22%20name%3D%22function%22%20val%3D%22arc%22%2F%3E`

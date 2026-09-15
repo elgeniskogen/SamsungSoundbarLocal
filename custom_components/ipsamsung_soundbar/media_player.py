@@ -16,7 +16,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_NAME, DEFAULT_NAME, DEFAULT_PORT, DOMAIN, SOURCE_LIST
+from .const import (
+    CONF_NAME,
+    DEFAULT_NAME,
+    DEFAULT_PORT,
+    DOMAIN,
+    SOURCE_LIST,
+    SOURCE_WIFI,
+    WIFI_INFERENCE_THRESHOLD,
+)
 
 SUPPORTED_FEATURES = (
     MediaPlayerEntityFeature.TURN_ON
@@ -54,6 +62,7 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
         self._attr_volume_level = None
         self._attr_is_volume_muted = None
         self._attr_source = None
+        self._func_fail_count = 0
 
     def _url(self, xml_payload: str) -> str:
         return f"http://{self._host}:{self._port}/UIC?cmd={quote(xml_payload, safe='/')}"
@@ -76,6 +85,17 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
         response = root.find(".//response")
         return response is not None and response.attrib.get("result") == "ok"
 
+    async def _refresh_power_status(self) -> None:
+        # GetPowerStatus is reliable in both power states on the HW-Q960A -
+        # unlike GetFunc, it doesn't need a fallback assumption when it responds.
+        power_root = await self._request("<name>GetPowerStatus</name>")
+        if power_root is not None:
+            power = power_root.findtext(".//powerStatus")
+            if power == "1":
+                self._attr_state = MediaPlayerState.ON
+            elif power == "0":
+                self._attr_state = MediaPlayerState.OFF
+
     async def async_update(self) -> None:
         vol_root = await self._request("<name>GetVolume</name>")
         if vol_root is not None:
@@ -89,36 +109,39 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
             if mute_text is not None:
                 self._attr_is_volume_muted = mute_text.lower() == "on"
 
-        func_root = await self._request("<name>GetFunc</name>")
-        if func_root is not None:
-            func_text = func_root.findtext(".//function")
-            if func_text:
-                self._attr_source = func_text
+        await self._refresh_power_status()
 
-        power_root = await self._request("<name>GetPowerStatus</name>")
-        if power_root is not None:
-            power = power_root.findtext(".//powerStatus")
-            if power == "1":
-                self._attr_state = MediaPlayerState.ON
-            elif power == "0":
-                self._attr_state = MediaPlayerState.OFF
-            else:
-                self._attr_state = MediaPlayerState.ON
+        func_root = await self._request("<name>GetFunc</name>")
+        func_text = func_root.findtext(".//function") if func_root is not None else None
+        if func_text:
+            self._func_fail_count = 0
+            self._attr_source = func_text
         else:
-            # Device often stops responding when off; keep optimistic ON state if reachable by other calls.
-            self._attr_state = MediaPlayerState.ON
+            # On the HW-Q960A, GetFunc stops returning <function> while the unit
+            # is on a network-audio source (Wi-Fi/AirPlay/Spotify Connect) and
+            # instead echoes an unrelated queued status message. Only infer
+            # Wi-Fi after repeated failures while powered on, so a single
+            # dropped request isn't mistaken for a source change.
+            self._func_fail_count += 1
+            if (
+                self._func_fail_count >= WIFI_INFERENCE_THRESHOLD
+                and self._attr_state == MediaPlayerState.ON
+            ):
+                self._attr_source = SOURCE_WIFI
 
     async def async_turn_on(self) -> None:
-        if await self._send("<name>PowerOn</name>"):
-            self._attr_state = MediaPlayerState.ON
+        # Raw PowerOn is confirmed non-functional on the HW-Q960A; SetPowerStatus
+        # is the reliable command. Its immediate response can't be trusted (the
+        # device may echo an unrelated "ok" status), so confirm via GetPowerStatus.
+        await self._send('<name>SetPowerStatus</name><p type="dec" name="power" val="1"/>')
+        await self._refresh_power_status()
 
     async def async_turn_off(self) -> None:
-        # Try native PowerOff first, then SetPowerStatus fallback.
-        ok = await self._send("<name>PowerOff</name>")
-        if not ok:
-            ok = await self._send('<name>SetPowerStatus</name><p type="dec" name="power" val="0"/>')
-        if ok:
-            self._attr_state = MediaPlayerState.OFF
+        # Raw PowerOff is confirmed non-functional (and can falsely report
+        # result="ok"); SetPowerStatus is the reliable command, verified via
+        # a follow-up GetPowerStatus rather than trusting the immediate reply.
+        await self._send('<name>SetPowerStatus</name><p type="dec" name="power" val="0"/>')
+        await self._refresh_power_status()
 
     async def async_set_volume_level(self, volume: float) -> None:
         value = int(max(0, min(100, round(volume * 100))))
