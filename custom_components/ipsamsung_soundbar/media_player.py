@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from urllib.parse import quote
 import xml.etree.ElementTree as ET
 
@@ -25,6 +26,8 @@ from .const import (
     SOURCE_WIFI,
     WIFI_INFERENCE_THRESHOLD,
 )
+
+SCAN_INTERVAL = timedelta(seconds=5)
 
 SUPPORTED_FEATURES = (
     MediaPlayerEntityFeature.TURN_ON
