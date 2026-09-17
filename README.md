@@ -43,6 +43,12 @@ This repository is now structured as a proper HACS custom integration:
   - volume
   - mute
   - source (see Wi-Fi caveat above)
+- Sound Mode (`select.<name>_sound_mode`):
+  - Reads directly and locally via `GetSoundMode` (`standard`, `surround`, `game`, `adaptive sound`)
+  - There is no working local write command for Sound Mode - `SetSoundMode` was tested (several command/parameter/value variants) and does not work on the HW-Q960A
+  - Setting it therefore drives the soundbar's physical Sound Mode button through an existing Harmony remote (`remote.kjellerstue`, device `Samsung Amp`, command `SoundMode`), which **cycles** through modes rather than selecting one directly
+  - Every press is verified with a real `GetSoundMode` read in a closed loop (never assumes a press succeeded or which mode it landed on); up to 5 presses, since live testing showed the first 2 presses after a period of inactivity just wake the receiver/show status with no mode change, plus up to 3 real cycle steps in the confirmed `standard -> surround -> game -> adaptive sound -> standard` cycle
+  - Requires the Harmony remote entity to exist and be reachable; this is currently hardcoded in `const.py` for this specific setup, not exposed in the config flow
 
 ## Command Behavior Notes (N950 Testing)
 

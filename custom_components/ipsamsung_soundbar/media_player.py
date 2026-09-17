@@ -1,10 +1,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from urllib.parse import quote
-import xml.etree.ElementTree as ET
-
-from aiohttp import ClientError
 
 from homeassistant.components.media_player import (
     MediaPlayerEntity,
@@ -14,7 +10,6 @@ from homeassistant.components.media_player import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
@@ -26,6 +21,7 @@ from .const import (
     SOURCE_WIFI,
     WIFI_INFERENCE_THRESHOLD,
 )
+from .uic_client import UicClient
 
 SCAN_INTERVAL = timedelta(seconds=5)
 
@@ -56,8 +52,7 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
 
     def __init__(self, hass: HomeAssistant, host: str, port: int, name: str) -> None:
         self.hass = hass
-        self._host = host
-        self._port = port
+        self._client = UicClient(hass, host, port)
         self._attr_name = name
         self._attr_unique_id = f"{DOMAIN}_{host}_{port}"
         self._attr_source_list = SOURCE_LIST
@@ -67,31 +62,10 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
         self._attr_source = None
         self._func_fail_count = 0
 
-    def _url(self, xml_payload: str) -> str:
-        return f"http://{self._host}:{self._port}/UIC?cmd={quote(xml_payload, safe='/')}"
-
-    async def _request(self, xml_payload: str) -> ET.Element | None:
-        session = async_get_clientsession(self.hass)
-        try:
-            async with session.get(self._url(xml_payload), timeout=4) as resp:
-                if resp.status != 200:
-                    return None
-                text = await resp.text()
-                return ET.fromstring(text)
-        except (TimeoutError, ClientError, ET.ParseError):
-            return None
-
-    async def _send(self, xml_payload: str) -> bool:
-        root = await self._request(xml_payload)
-        if root is None:
-            return False
-        response = root.find(".//response")
-        return response is not None and response.attrib.get("result") == "ok"
-
     async def _refresh_power_status(self) -> None:
         # GetPowerStatus is reliable in both power states on the HW-Q960A -
         # unlike GetFunc, it doesn't need a fallback assumption when it responds.
-        power_root = await self._request("<name>GetPowerStatus</name>")
+        power_root = await self._client.request("<name>GetPowerStatus</name>")
         if power_root is not None:
             power = power_root.findtext(".//powerStatus")
             if power == "1":
@@ -100,13 +74,13 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
                 self._attr_state = MediaPlayerState.OFF
 
     async def async_update(self) -> None:
-        vol_root = await self._request("<name>GetVolume</name>")
+        vol_root = await self._client.request("<name>GetVolume</name>")
         if vol_root is not None:
             vol_text = vol_root.findtext(".//volume")
             if vol_text is not None and vol_text.isdigit():
                 self._attr_volume_level = max(0.0, min(1.0, int(vol_text) / 100.0))
 
-        mute_root = await self._request("<name>GetMute</name>")
+        mute_root = await self._client.request("<name>GetMute</name>")
         if mute_root is not None:
             mute_text = mute_root.findtext(".//mute")
             if mute_text is not None:
@@ -114,7 +88,7 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
 
         await self._refresh_power_status()
 
-        func_root = await self._request("<name>GetFunc</name>")
+        func_root = await self._client.request("<name>GetFunc</name>")
         func_text = func_root.findtext(".//function") if func_root is not None else None
         if func_text:
             self._func_fail_count = 0
@@ -139,18 +113,18 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
         # (like async_select_source) so HA reflects it immediately instead of
         # waiting on an extra confirmatory round trip; the regular poll still
         # corrects it if a command is ever silently ignored.
-        if await self._send('<name>SetPowerStatus</name><p type="dec" name="power" val="1"/>'):
+        if await self._client.send('<name>SetPowerStatus</name><p type="dec" name="power" val="1"/>'):
             self._attr_state = MediaPlayerState.ON
 
     async def async_turn_off(self) -> None:
         # See async_turn_on - SetPowerStatus's ack is trustworthy, so set state
         # optimistically instead of paying for a confirmatory GetPowerStatus call.
-        if await self._send('<name>SetPowerStatus</name><p type="dec" name="power" val="0"/>'):
+        if await self._client.send('<name>SetPowerStatus</name><p type="dec" name="power" val="0"/>'):
             self._attr_state = MediaPlayerState.OFF
 
     async def async_set_volume_level(self, volume: float) -> None:
         value = int(max(0, min(100, round(volume * 100))))
-        if await self._send(f'<name>SetVolume</name><p type="dec" name="volume" val="{value}"/>'):
+        if await self._client.send(f'<name>SetVolume</name><p type="dec" name="volume" val="{value}"/>'):
             self._attr_volume_level = value / 100.0
 
     async def async_volume_up(self) -> None:
@@ -169,11 +143,11 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
 
     async def async_mute_volume(self, mute: bool) -> None:
         value = "on" if mute else "off"
-        if await self._send(f'<name>SetMute</name><p type="str" name="mute" val="{value}"/>'):
+        if await self._client.send(f'<name>SetMute</name><p type="str" name="mute" val="{value}"/>'):
             self._attr_is_volume_muted = mute
 
     async def async_select_source(self, source: str) -> None:
         if source not in SOURCE_LIST:
             return
-        if await self._send(f'<name>SetFunc</name><p type="str" name="function" val="{source}"/>'):
+        if await self._client.send(f'<name>SetFunc</name><p type="str" name="function" val="{source}"/>'):
             self._attr_source = source
