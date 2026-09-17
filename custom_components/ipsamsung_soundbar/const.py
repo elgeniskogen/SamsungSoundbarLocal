@@ -52,3 +52,15 @@ SOUND_MODE_MAX_PRESSES = 5
 # a change before giving up on that press and trying the next one.
 SOUND_MODE_POLL_INTERVAL = 0.25
 SOUND_MODE_STEP_TIMEOUT = 1.0
+
+# EQ presets, read via GetCurrentEQMode's <presetindex> and set via
+# Set7bandEQMode's presetindex parameter. Both directly confirmed working
+# over local UIC on the HW-Q960A for every index 0-4 - unlike Sound Mode,
+# no Harmony workaround is needed here. List order matches the device's own
+# preset index order exactly - do not reorder.
+EQ_PRESET_LIST = ["normal", "pop", "jazz", "classical", "custom"]
+
+# Confirmed device-level side effect: selecting any EQ preset also switches
+# Sound Mode to "standard". Not synchronized across entities here (no shared
+# coordinator in this integration) - the Sound Mode select's own 5-second
+# poll picks this up independently, within one cycle.

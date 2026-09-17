@@ -16,6 +16,7 @@ from .const import (
     DEFAULT_NAME,
     DEFAULT_PORT,
     DOMAIN,
+    EQ_PRESET_LIST,
     HARMONY_DEVICE,
     HARMONY_REMOTE_ENTITY_ID,
     HARMONY_SOUND_MODE_COMMAND,
@@ -39,7 +40,13 @@ async def async_setup_entry(
     host = entry.data[CONF_HOST]
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
     name = entry.data.get(CONF_NAME, DEFAULT_NAME)
-    async_add_entities([SamsungSoundModeSelect(hass, host, port, name)], True)
+    async_add_entities(
+        [
+            SamsungSoundModeSelect(hass, host, port, name),
+            SamsungEqPresetSelect(hass, host, port, name),
+        ],
+        True,
+    )
 
 
 class SamsungSoundModeSelect(SelectEntity):
@@ -155,3 +162,48 @@ class SamsungSoundModeSelect(SelectEntity):
                 f"{SOUND_MODE_MAX_PRESSES} Harmony presses; soundbar is "
                 f"actually on '{current}'"
             )
+
+
+class SamsungEqPresetSelect(SelectEntity):
+    """EQ preset select entity.
+
+    Unlike Sound Mode, both GetCurrentEQMode and Set7bandEQMode are directly
+    confirmed working over local UIC on the HW-Q960A - no Harmony closed loop
+    needed here, same simple read/write pattern as async_select_source.
+
+    Selecting any EQ preset also switches Sound Mode to "standard" as a
+    confirmed device-level side effect. This isn't synchronized directly into
+    the Sound Mode select entity - its own regular poll picks up the change
+    independently, within one 5-second cycle.
+    """
+
+    _attr_options = EQ_PRESET_LIST
+    _attr_icon = "mdi:equalizer"
+
+    def __init__(self, hass: HomeAssistant, host: str, port: int, name: str) -> None:
+        self.hass = hass
+        self._client = UicClient(hass, host, port)
+        self._attr_name = f"{name} EQ Preset"
+        self._attr_unique_id = f"{DOMAIN}_{host}_{port}_eq_preset"
+        self._attr_current_option = None
+
+    async def async_update(self) -> None:
+        root = await self._client.request("<name>GetCurrentEQMode</name>")
+        if root is None:
+            return
+        index_text = root.findtext(".//presetindex")
+        if index_text is not None and index_text.isdigit():
+            index = int(index_text)
+            if 0 <= index < len(EQ_PRESET_LIST):
+                self._attr_current_option = EQ_PRESET_LIST[index]
+            else:
+                _LOGGER.warning("Soundbar reported unknown EQ preset index: %s", index_text)
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in EQ_PRESET_LIST:
+            return
+        index = EQ_PRESET_LIST.index(option)
+        if await self._client.send(
+            f'<name>Set7bandEQMode</name><p type="dec" name="presetindex" val="{index}"/>'
+        ):
+            self._attr_current_option = option

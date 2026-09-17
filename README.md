@@ -49,6 +49,10 @@ This repository is now structured as a proper HACS custom integration:
   - Setting it therefore drives the soundbar's physical Sound Mode button through an existing Harmony remote (`remote.kjellerstue`, device `Samsung Amp`, command `SoundMode`), which **cycles** through modes rather than selecting one directly
   - Every press is verified with a real `GetSoundMode` read in a closed loop (never assumes a press succeeded or which mode it landed on); up to 5 presses, since live testing showed the first 2 presses after a period of inactivity just wake the receiver/show status with no mode change, plus up to 3 real cycle steps in the confirmed `standard -> surround -> game -> adaptive sound -> standard` cycle
   - Requires the Harmony remote entity to exist and be reachable; this is currently hardcoded in `const.py` for this specific setup, not exposed in the config flow
+- EQ Preset (`select.<name>_eq_preset`):
+  - `normal`, `pop`, `jazz`, `classical`, `custom` - reads via `GetCurrentEQMode`'s `<presetindex>`, sets via `Set7bandEQMode`'s `presetindex` parameter
+  - Both directions directly confirmed working over local UIC on the HW-Q960A for every preset - no Harmony workaround needed here, unlike Sound Mode
+  - Confirmed device-level side effect: selecting any EQ preset also switches Sound Mode to `standard`. The Sound Mode select entity isn't updated immediately when this happens - its own regular poll picks up the change within its own 5-second cycle
 
 ## Command Behavior Notes (N950 Testing)
 
