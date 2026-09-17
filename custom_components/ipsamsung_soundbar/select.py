@@ -25,6 +25,7 @@ from .const import (
     SOUND_MODE_POLL_INTERVAL,
     SOUND_MODE_STEP_TIMEOUT,
 )
+from .device import soundbar_device_info
 from .uic_client import UicClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ class SamsungSoundModeSelect(SelectEntity):
         self._client = UicClient(hass, host, port)
         self._attr_name = f"{name} Sound Mode"
         self._attr_unique_id = f"{DOMAIN}_{host}_{port}_sound_mode"
+        self._attr_device_info = soundbar_device_info(host, port, name)
         self._attr_current_option = None
         self._lock = asyncio.Lock()
 
@@ -185,6 +187,7 @@ class SamsungEqPresetSelect(SelectEntity):
         self._client = UicClient(hass, host, port)
         self._attr_name = f"{name} EQ Preset"
         self._attr_unique_id = f"{DOMAIN}_{host}_{port}_eq_preset"
+        self._attr_device_info = soundbar_device_info(host, port, name)
         self._attr_current_option = None
 
     async def async_update(self) -> None:

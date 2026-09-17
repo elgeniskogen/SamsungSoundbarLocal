@@ -21,6 +21,7 @@ from .const import (
     SOURCE_WIFI,
     WIFI_INFERENCE_THRESHOLD,
 )
+from .device import soundbar_device_info
 from .uic_client import UicClient
 
 SCAN_INTERVAL = timedelta(seconds=5)
@@ -55,6 +56,7 @@ class SamsungSoundbarEntity(MediaPlayerEntity):
         self._client = UicClient(hass, host, port)
         self._attr_name = name
         self._attr_unique_id = f"{DOMAIN}_{host}_{port}"
+        self._attr_device_info = soundbar_device_info(host, port, name)
         self._attr_source_list = SOURCE_LIST
         self._attr_state = MediaPlayerState.OFF
         self._attr_volume_level = None
